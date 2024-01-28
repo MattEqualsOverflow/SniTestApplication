@@ -40,7 +40,7 @@ async Task GetDevice()
             Log.Error(e, "Error with ListDevicesAsync call");
         }
         
-        await Task.Delay(TimeSpan.FromSeconds(3));
+        await Task.Delay(TimeSpan.FromSeconds(5));
     }
 }
 
@@ -50,6 +50,7 @@ async Task SendMessages(string deviceAddress)
     {
         try
         {
+            Log.Information("Sending ReadMemoryRequest");
             var response = await memoryClient.SingleReadAsync(new SingleReadMemoryRequest()
             {
                 Uri = deviceAddress,
@@ -63,7 +64,7 @@ async Task SendMessages(string deviceAddress)
             }, new CallOptions(deadline: DateTime.UtcNow.AddSeconds(3)));
             var state = (GameStates)response.Response.Data[0];
             Log.Information("Game State: {State}", state);
-            await Task.Delay(TimeSpan.FromSeconds(1));
+            await Task.Delay(TimeSpan.FromSeconds(3));
         }
         catch (Exception e)
         {
