@@ -3,6 +3,9 @@ using Grpc.Net.Client;
 using Serilog;
 using SNI;
 
+const bool CheckMemory = false;
+const bool CheckFilesystem = true;
+
 Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
     .WriteTo.Console()
@@ -12,6 +15,7 @@ Log.Logger = new LoggerConfiguration()
 var channel = GrpcChannel.ForAddress(new Uri("http://localhost:8191"));
 var devicesClient = new Devices.DevicesClient(channel);
 var memoryClient = new DeviceMemory.DeviceMemoryClient(channel);
+var filesClient = new DeviceFilesystem.DeviceFilesystemClient(channel);
 
 _ = GetDevice();
 
@@ -31,8 +35,15 @@ async Task GetDevice()
             {
                 var device = deviceResponse.Devices.First();
                 Log.Information("Connecting to device {Name}", device.DisplayName);
-                _ = SendMessages(device.Uri);
-                return;
+
+                if (CheckMemory)
+                {
+                    await SendMessages(device.Uri);
+                }
+                else if (CheckFilesystem)
+                {
+                    await GetFileSystem(device.Uri);
+                }
             }
         }
         catch (Exception e)
@@ -44,34 +55,40 @@ async Task GetDevice()
     }
 }
 
+async Task GetFileSystem(string deviceAddress)
+{
+    Log.Information("Reading directory");
+    
+    
+    var results = await filesClient.ReadDirectoryAsync(new ReadDirectoryRequest()
+    {
+        Uri = deviceAddress,
+        Path = ""
+    });
+    
+    Log.Information("Files: {Files}", string.Join(", ", results.Entries.Select(x => x.Name)));
+    
+}
+
 async Task SendMessages(string deviceAddress)
 {
     while (true)
     {
-        try
+        Log.Information("Sending ReadMemoryRequest");
+        var response = await memoryClient.SingleReadAsync(new SingleReadMemoryRequest()
         {
-            Log.Information("Sending ReadMemoryRequest");
-            var response = await memoryClient.SingleReadAsync(new SingleReadMemoryRequest()
+            Uri = deviceAddress,
+            Request = new ReadMemoryRequest()
             {
-                Uri = deviceAddress,
-                Request = new ReadMemoryRequest()
-                {
-                    RequestAddress = 0xF50010,
-                    RequestAddressSpace = AddressSpace.FxPakPro,
-                    RequestMemoryMapping = MemoryMapping.ExHiRom,
-                    Size = 1
-                }
-            }, new CallOptions(deadline: DateTime.UtcNow.AddSeconds(3)));
-            var state = (GameStates)response.Response.Data[0];
-            Log.Information("Game State: {State}", state);
-            await Task.Delay(TimeSpan.FromSeconds(3));
-        }
-        catch (Exception e)
-        {
-            Log.Error(e, "Error with SingleReadAsync call");
-            _ = GetDevice();
-            break;
-        }
+                RequestAddress = 0xF50010,
+                RequestAddressSpace = AddressSpace.FxPakPro,
+                RequestMemoryMapping = MemoryMapping.ExHiRom,
+                Size = 1
+            }
+        }, new CallOptions(deadline: DateTime.UtcNow.AddSeconds(3)));
+        var state = (GameStates)response.Response.Data[0];
+        Log.Information("Game State: {State}", state);
+        await Task.Delay(TimeSpan.FromSeconds(3));
     }
 }
 
